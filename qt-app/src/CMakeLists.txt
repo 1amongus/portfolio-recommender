@@ -4,8 +4,16 @@ qt_add_executable(PortfolioRecommenderApp
     app/main.cpp
     models/Portfolio.h
     models/Asset.h
+    models/BacktestResult.h
+    models/SensitivityPoint.h
+    services/backtest/Engine.cpp
+    services/backtest/Engine.h
     services/optimization/Optimizer.cpp
     services/optimization/Optimizer.h
+    services/import/CsvParser.cpp
+    services/import/CsvParser.h
+    services/sensitivity/CurveGenerator.cpp
+    services/sensitivity/CurveGenerator.h
     services/data/DataStore.cpp
     services/data/DataStore.h
     services/data/RateLimiter.cpp
@@ -15,6 +23,12 @@ qt_add_executable(PortfolioRecommenderApp
     services/data/providers/AlphaVantageProvider.h
     ui/controllers/PortfolioController.cpp
     ui/controllers/PortfolioController.h
+    ui/controllers/ImportController.cpp
+    ui/controllers/ImportController.h
+    ui/controllers/BacktestController.cpp
+    ui/controllers/BacktestController.h
+    ui/controllers/SensitivityController.cpp
+    ui/controllers/SensitivityController.h
     ui/controllers/SettingsController.cpp
     ui/controllers/SettingsController.h
     utils/Math.cpp
