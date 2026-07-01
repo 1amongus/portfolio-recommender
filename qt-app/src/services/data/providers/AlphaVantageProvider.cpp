@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
+#include <QThread>
 #include <QUrlQuery>
 #include <QtConcurrent>
 
@@ -105,7 +106,13 @@ QByteArray AlphaVantageProvider::performGet(const QUrl& url) const
 {
     QNetworkRequest request(url);
     QEventLoop loop;
-    QNetworkReply* reply = m_networkAccessManager->get(request);
+    QNetworkAccessManager localManager;
+    QNetworkAccessManager* manager = m_networkAccessManager;
+    if (manager == nullptr || manager->thread() != QThread::currentThread()) {
+        manager = &localManager;
+    }
+
+    QNetworkReply* reply = manager->get(request);
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     loop.exec();
     const QByteArray payload = reply->readAll();

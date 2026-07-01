@@ -5,6 +5,7 @@
 
 #include "../../models/Portfolio.h"
 #include "../../services/data/DataStore.h"
+#include "../../services/data/UniverseManager.h"
 #include "../../services/optimization/Optimizer.h"
 
 class PortfolioController : public QObject
@@ -36,7 +37,6 @@ signals:
     void errorOccurred(const QString& message);
 
 private:
-    void ensureSeedData();
     void setErrorMessage(const QString& message);
 
     double m_targetYield;
@@ -44,5 +44,6 @@ private:
     QString m_errorMessage;
     QVariantMap m_portfolioResult;
     DataStore m_dataStore;
+    UniverseManager m_universeManager;
     Optimizer m_optimizer;
 };

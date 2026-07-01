@@ -16,6 +16,8 @@ qt_add_executable(PortfolioRecommenderApp
     services/sensitivity/CurveGenerator.h
     services/data/DataStore.cpp
     services/data/DataStore.h
+    services/data/UniverseManager.cpp
+    services/data/UniverseManager.h
     services/data/RateLimiter.cpp
     services/data/RateLimiter.h
     services/data/providers/IMarketDataProvider.h
@@ -23,6 +25,8 @@ qt_add_executable(PortfolioRecommenderApp
     services/data/providers/AlphaVantageProvider.h
     ui/controllers/PortfolioController.cpp
     ui/controllers/PortfolioController.h
+    ui/controllers/SavedController.cpp
+    ui/controllers/SavedController.h
     ui/controllers/ImportController.cpp
     ui/controllers/ImportController.h
     ui/controllers/BacktestController.cpp

@@ -32,6 +32,8 @@ public:
 
     virtual QVector<Portfolio> loadPortfolios() const;
 
+    virtual bool deletePortfolio(const QString& id) const;
+
 
 
     virtual bool saveAssets(const QVector<Asset>& assets) const;
@@ -71,4 +73,3 @@ private:
     QString blobFilePath(const QString& key) const;
 
 };
-

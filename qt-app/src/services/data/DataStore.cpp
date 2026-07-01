@@ -24,6 +24,8 @@
 
 namespace {
 
+bool atomicWriteJson(const QString& path, const QJsonDocument& document);
+
 QJsonObject holdingToJson(const Holding& holding)
 
 {
@@ -131,6 +133,24 @@ Portfolio portfolioFromJson(const QJsonObject& object)
 
 
     return portfolio;
+
+}
+
+bool writePortfolios(const QString& path, const QVector<Portfolio>& portfolios)
+
+{
+
+    QJsonArray items;
+
+    for (const auto& item : portfolios) {
+
+        items.append(portfolioToJson(item));
+
+    }
+
+
+
+    return atomicWriteJson(path, QJsonDocument(items));
 
 }
 
@@ -418,21 +438,9 @@ bool DataStore::savePortfolio(const Portfolio& portfolio) const
 
     }
 
-
-
-    QJsonArray items;
-
-    for (const auto& item : portfolios) {
-
-        items.append(portfolioToJson(item));
-
-    }
-
-
-
     ensureDataDirectory();
 
-    return atomicWriteJson(portfolioFilePath(), QJsonDocument(items));
+    return writePortfolios(portfolioFilePath(), portfolios);
 
 }
 
@@ -465,6 +473,45 @@ QVector<Portfolio> DataStore::loadPortfolios() const
 
 
     return result;
+
+}
+
+
+
+bool DataStore::deletePortfolio(const QString& id) const
+
+{
+
+    if (id.isEmpty()) {
+
+        return false;
+
+    }
+
+
+
+    auto portfolios = loadPortfolios();
+    const auto originalSize = portfolios.size();
+
+    portfolios.erase(
+        std::remove_if(portfolios.begin(), portfolios.end(), [&](const Portfolio& portfolio) {
+
+            return portfolio.id == id;
+
+        }),
+        portfolios.end());
+
+    if (portfolios.size() == originalSize) {
+
+        return false;
+
+    }
+
+
+
+    ensureDataDirectory();
+
+    return writePortfolios(portfolioFilePath(), portfolios);
 
 }
 
@@ -705,4 +752,3 @@ QString DataStore::blobFilePath(const QString& key) const
     return dataDirectory() + QStringLiteral("/blobs/") + sanitizeBlobKey(key) + QStringLiteral(".json");
 
 }
-
