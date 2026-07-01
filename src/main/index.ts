@@ -1,7 +1,11 @@
 import { app, BrowserWindow, session } from 'electron';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { registerIpcHandlers } from './ipc/portfolio.ipc.js';
 import { initializeStorage } from './services/data/store.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -32,9 +36,9 @@ async function createWindow() {
     });
   });
 
-  // Block non-HTTPS requests
-  session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*'] }, (details, callback) => {
-    if (!details.url.startsWith('http://localhost')) {
+  // Block non-HTTPS requests (except localhost for dev)
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    if (details.url.startsWith('http://') && !details.url.startsWith('http://localhost')) {
       console.warn(`Blocked non-HTTPS request: ${details.url}`);
       callback({ cancel: true });
     } else {
