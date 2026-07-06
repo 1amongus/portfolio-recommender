@@ -13,6 +13,13 @@ ApplicationWindow {
     visible: true
     title: "Portfolio Recommender"
 
+    onClosing: function(close) {
+        if (trayManager && trayManager.minimizeToTray) {
+            close.accepted = false
+            trayManager.hideToTray()
+        }
+    }
+
     Material.theme: Material.Dark
     Material.accent: Material.Teal
 

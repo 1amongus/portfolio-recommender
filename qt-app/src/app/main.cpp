@@ -1,7 +1,10 @@
 #include <QCoreApplication>
-#include <QGuiApplication>
+#include <QApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QSystemTrayIcon>
+#include <QWindow>
 
 #include "../services/data/DataStore.h"
 #include "../services/data/UniverseManager.h"
@@ -11,10 +14,11 @@
 #include "../ui/controllers/SavedController.h"
 #include "../ui/controllers/SensitivityController.h"
 #include "../ui/controllers/SettingsController.h"
+#include "TrayManager.h"
 
 int main(int argc, char *argv[])
 {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Portfolio Recommender"));
     app.setApplicationVersion(QStringLiteral("1.0.0"));
     app.setOrganizationName(QStringLiteral("PortfolioRecommender"));
@@ -35,6 +39,7 @@ int main(int argc, char *argv[])
     PortfolioController portfolioController;
     SavedController savedController;
     SensitivityController sensitivityController;
+    TrayManager trayManager;
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("backtestController"), &backtestController);
@@ -43,6 +48,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("savedController"), &savedController);
     engine.rootContext()->setContextProperty(QStringLiteral("sensitivityController"), &sensitivityController);
     engine.rootContext()->setContextProperty(QStringLiteral("settingsController"), &settingsController);
+    engine.rootContext()->setContextProperty(QStringLiteral("trayManager"), &trayManager);
 
     QObject::connect(
         &engine,
@@ -52,5 +58,18 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
 
     engine.loadFromModule("PortfolioRecommender", "Main");
+    app.setQuitOnLastWindowClosed(!QSystemTrayIcon::isSystemTrayAvailable());
+
+    if (engine.rootObjects().isEmpty()) {
+        return -1;
+    }
+
+    if (auto* window = qobject_cast<QWindow*>(engine.rootObjects().constFirst())) {
+        trayManager.setup(window);
+    }
+
+    QObject::connect(&trayManager, &TrayManager::generateRequested, &portfolioController, &PortfolioController::generate);
+    QObject::connect(&trayManager, &TrayManager::quitRequested, &app, &QCoreApplication::quit);
+
     return app.exec();
 }

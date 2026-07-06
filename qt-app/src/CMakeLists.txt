@@ -1,7 +1,9 @@
-find_package(Qt6 REQUIRED COMPONENTS Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Concurrent Widgets)
 
 qt_add_executable(PortfolioRecommenderApp
     app/main.cpp
+    app/TrayManager.cpp
+    app/TrayManager.h
     models/Portfolio.h
     models/Asset.h
     models/BacktestResult.h
@@ -65,6 +67,7 @@ target_link_libraries(PortfolioRecommenderApp
         Qt6::Network
         Qt6::Charts
         Qt6::Concurrent
+        Qt6::Widgets
 )
 
 set_target_properties(PortfolioRecommenderApp PROPERTIES
