@@ -1,6 +1,9 @@
 #include "ImportController.h"
 
+#include <QDate>
+#include <QDateTime>
 #include <QFile>
+#include <QTime>
 #include <QtGlobal>
 #include <QRegularExpression>
 
@@ -15,6 +18,47 @@ bool isValidTicker(const QString& ticker)
     static const QRegularExpression pattern(QStringLiteral("^[A-Z][A-Z.-]{0,9}$"));
     return pattern.match(ticker).hasMatch();
 }
+
+QVariantMap metricsToVariantMap(const BacktestMetrics& metrics)
+{
+    return {
+        {QStringLiteral("totalReturn"), metrics.totalReturn},
+        {QStringLiteral("annualizedReturn"), metrics.annualizedReturn},
+        {QStringLiteral("maxDrawdown"), metrics.maxDrawdown},
+        {QStringLiteral("sharpeRatio"), metrics.sharpeRatio},
+        {QStringLiteral("sortinoRatio"), metrics.sortinoRatio},
+        {QStringLiteral("averageYield"), metrics.averageYield},
+        {QStringLiteral("yieldStability"), metrics.yieldStability},
+        {QStringLiteral("portfolioBeta"), metrics.portfolioBeta}
+    };
+}
+
+QVariantList curveToVariantList(const QVector<QDate>& dates, const QVector<double>& values)
+{
+    QVariantList data;
+    const qsizetype count = qMin(dates.size(), values.size());
+    data.reserve(count);
+    for (qsizetype index = 0; index < count; ++index) {
+        data.append(QVariantMap{
+            {QStringLiteral("x"), QDateTime(dates[index], QTime(0, 0), Qt::UTC).toMSecsSinceEpoch()},
+            {QStringLiteral("y"), values[index]}
+        });
+    }
+    return data;
+}
+
+QVariantMap backtestToVariantMap(const BacktestResult& result)
+{
+    return {
+        {QStringLiteral("portfolioId"), result.portfolioId},
+        {QStringLiteral("startDate"), result.startDate.toString(Qt::ISODate)},
+        {QStringLiteral("endDate"), result.endDate.toString(Qt::ISODate)},
+        {QStringLiteral("metrics"), metricsToVariantMap(result.metrics)},
+        {QStringLiteral("equityCurveData"), curveToVariantList(result.dates, result.equityCurve)},
+        {QStringLiteral("drawdownCurveData"), curveToVariantList(result.dates, result.drawdownCurve)},
+        {QStringLiteral("rollingYieldData"), curveToVariantList(result.dates, result.rollingYield)}
+    };
+}
 }
 
 ImportController::ImportController(QObject* parent)
@@ -22,6 +66,7 @@ ImportController::ImportController(QObject* parent)
     , m_targetYield(0.03)
     , m_isLoading(false)
     , m_optimizer(&m_dataStore)
+    , m_backtestEngine(&m_dataStore)
 {
 }
 
@@ -38,6 +83,16 @@ QVariantList ImportController::rebalancedHoldings() const
 QVariantMap ImportController::comparison() const
 {
     return m_comparison;
+}
+
+QVariantMap ImportController::originalBacktest() const
+{
+    return m_originalBacktest;
+}
+
+QVariantMap ImportController::rebalancedBacktest() const
+{
+    return m_rebalancedBacktest;
 }
 
 double ImportController::targetYield() const
@@ -132,6 +187,8 @@ void ImportController::rebalance()
     if (rebalanced.isEmpty()) {
         setRebalancedHoldingsData({});
         setComparisonData({});
+        setOriginalBacktestData({});
+        setRebalancedBacktestData({});
         setErrorMessage(QStringLiteral("No qualifying assets available for the requested yield."));
         setIsLoading(false);
         return;
@@ -139,6 +196,8 @@ void ImportController::rebalance()
 
     setRebalancedHoldingsData(rebalanced);
     setComparisonData(buildComparison(original, rebalanced));
+    setOriginalBacktestData({});
+    setRebalancedBacktestData({});
     setIsLoading(false);
 }
 
@@ -165,6 +224,8 @@ void ImportController::addHolding(const QString& ticker, double weight)
     setImportedHoldingsData(m_importedHoldingsData);
     setRebalancedHoldingsData({});
     setComparisonData({});
+    setOriginalBacktestData({});
+    setRebalancedBacktestData({});
     setErrorMessage(QString());
 
     if (!foundInUniverse) {
@@ -188,6 +249,8 @@ void ImportController::removeHolding(int index)
     setImportedHoldingsData(m_importedHoldingsData);
     setRebalancedHoldingsData({});
     setComparisonData({});
+    setOriginalBacktestData({});
+    setRebalancedBacktestData({});
     setErrorMessage(QString());
 }
 
@@ -196,8 +259,51 @@ void ImportController::clear()
     setImportedHoldingsData({});
     setRebalancedHoldingsData({});
     setComparisonData({});
+    setOriginalBacktestData({});
+    setRebalancedBacktestData({});
     setParseWarnings({});
     setErrorMessage(QString());
+}
+
+void ImportController::runComparativeBacktest(int years)
+{
+    if (m_isLoading) {
+        return;
+    }
+
+    if (years <= 0) {
+        setErrorMessage(QStringLiteral("Please choose a valid back-test duration."));
+        return;
+    }
+
+    const QVector<Holding> original = normalizedHoldings(m_importedHoldingsData);
+    const QVector<Holding> rebalanced = normalizedHoldings(m_rebalancedHoldingsData);
+    if (original.isEmpty() || rebalanced.isEmpty()) {
+        setOriginalBacktestData({});
+        setRebalancedBacktestData({});
+        setErrorMessage(QStringLiteral("Import and rebalance holdings before running a comparison back-test."));
+        return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage(QString());
+
+    const QDate endDate = QDate::currentDate();
+    const QDate startDate = endDate.addYears(-years);
+    const BacktestResult originalResult = m_backtestEngine.run(original, startDate, endDate, RebalanceFrequency::Never);
+    const BacktestResult rebalancedResult = m_backtestEngine.run(rebalanced, startDate, endDate, RebalanceFrequency::Never);
+
+    setIsLoading(false);
+
+    if (originalResult.equityCurve.isEmpty() || rebalancedResult.equityCurve.isEmpty()) {
+        setOriginalBacktestData({});
+        setRebalancedBacktestData({});
+        setErrorMessage(QStringLiteral("Unable to generate comparative back-tests for the selected portfolios."));
+        return;
+    }
+
+    setOriginalBacktestData(backtestToVariantMap(originalResult));
+    setRebalancedBacktestData(backtestToVariantMap(rebalancedResult));
 }
 
 QVariantList ImportController::holdingsToVariantList(const QVector<Holding>& holdings) const
@@ -276,6 +382,8 @@ void ImportController::applyParseResult(const ParseResult& result)
     setRebalancedHoldingsData({});
     setComparisonData({});
     setParseWarnings(result.warnings);
+    setOriginalBacktestData({});
+    setRebalancedBacktestData({});
 
     if (!result.errors.isEmpty()) {
         setErrorMessage(result.errors.join(QLatin1Char('\n')));
@@ -308,6 +416,18 @@ void ImportController::setComparisonData(const QVariantMap& comparison)
 {
     m_comparison = comparison;
     emit comparisonChanged();
+}
+
+void ImportController::setOriginalBacktestData(const QVariantMap& backtest)
+{
+    m_originalBacktest = backtest;
+    emit originalBacktestChanged();
+}
+
+void ImportController::setRebalancedBacktestData(const QVariantMap& backtest)
+{
+    m_rebalancedBacktest = backtest;
+    emit rebalancedBacktestChanged();
 }
 
 void ImportController::setIsLoading(bool isLoading)

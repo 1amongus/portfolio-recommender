@@ -1,27 +1,55 @@
 #include "SavedController.h"
 
 #include <QDateTime>
+#include <QHash>
 
 namespace {
-QVariantList holdingsToVariantList(const QVector<Holding>& holdings)
+bool isAssetStale(const Asset& asset)
+{
+    return !asset.lastUpdated.isValid() || asset.lastUpdated.addDays(30) < QDateTime::currentDateTimeUtc();
+}
+
+QHash<QString, Asset> buildAssetLookup(const QVector<Asset>& assets)
+{
+    QHash<QString, Asset> lookup;
+    lookup.reserve(assets.size());
+    for (const auto& asset : assets) {
+        lookup.insert(asset.ticker.toUpper(), asset);
+    }
+
+    return lookup;
+}
+
+QVariantList holdingsToVariantList(const QVector<Holding>& holdings, const QHash<QString, Asset>& assetsByTicker, bool* hasStaleAsset)
 {
     QVariantList list;
     list.reserve(holdings.size());
 
     for (const auto& holding : holdings) {
+        const bool stale = isAssetStale(assetsByTicker.value(holding.ticker.toUpper()));
+        if (hasStaleAsset != nullptr) {
+            *hasStaleAsset = *hasStaleAsset || stale;
+        }
+
         list.append(QVariantMap{
             {QStringLiteral("ticker"), holding.ticker},
             {QStringLiteral("weight"), holding.weight},
             {QStringLiteral("yield"), holding.yield},
-            {QStringLiteral("beta"), holding.beta}
+            {QStringLiteral("beta"), holding.beta},
+            {QStringLiteral("stale"), stale}
         });
     }
 
     return list;
 }
 
-QVariantMap portfolioSummaryToVariant(const Portfolio& portfolio)
+QVariantMap portfolioSummaryToVariant(const Portfolio& portfolio, const QHash<QString, Asset>& assetsByTicker)
 {
+    bool stale = false;
+    for (const auto& holding : portfolio.holdings) {
+        stale = stale || isAssetStale(assetsByTicker.value(holding.ticker.toUpper()));
+    }
+
     return {
         {QStringLiteral("id"), portfolio.id},
         {QStringLiteral("name"), portfolio.name},
@@ -29,12 +57,14 @@ QVariantMap portfolioSummaryToVariant(const Portfolio& portfolio)
         {QStringLiteral("achievedYield"), portfolio.achievedYield},
         {QStringLiteral("aggregateBeta"), portfolio.aggregateBeta},
         {QStringLiteral("holdingsCount"), portfolio.holdings.size()},
-        {QStringLiteral("createdAt"), portfolio.createdAt.toLocalTime().toString(QStringLiteral("yyyy-MM-dd hh:mm"))}
+        {QStringLiteral("createdAt"), portfolio.createdAt.toLocalTime().toString(QStringLiteral("yyyy-MM-dd hh:mm"))},
+        {QStringLiteral("stale"), stale}
     };
 }
 
-QVariantMap portfolioDetailToVariant(const Portfolio& portfolio)
+QVariantMap portfolioDetailToVariant(const Portfolio& portfolio, const QHash<QString, Asset>& assetsByTicker)
 {
+    bool stale = false;
     return {
         {QStringLiteral("id"), portfolio.id},
         {QStringLiteral("name"), portfolio.name},
@@ -42,8 +72,9 @@ QVariantMap portfolioDetailToVariant(const Portfolio& portfolio)
         {QStringLiteral("achievedYield"), portfolio.achievedYield},
         {QStringLiteral("aggregateBeta"), portfolio.aggregateBeta},
         {QStringLiteral("holdingsCount"), portfolio.holdings.size()},
-        {QStringLiteral("holdings"), holdingsToVariantList(portfolio.holdings)},
-        {QStringLiteral("createdAt"), portfolio.createdAt.toLocalTime().toString(QStringLiteral("yyyy-MM-dd hh:mm"))}
+        {QStringLiteral("holdings"), holdingsToVariantList(portfolio.holdings, assetsByTicker, &stale)},
+        {QStringLiteral("createdAt"), portfolio.createdAt.toLocalTime().toString(QStringLiteral("yyyy-MM-dd hh:mm"))},
+        {QStringLiteral("stale"), stale}
     };
 }
 }
@@ -72,6 +103,7 @@ int SavedController::count() const
 void SavedController::refresh()
 {
     const QVector<Portfolio> portfolios = m_dataStore.loadPortfolios();
+    const QHash<QString, Asset> assetsByTicker = buildAssetLookup(m_dataStore.loadAssets());
     QVariantList refreshed;
     refreshed.reserve(portfolios.size());
 
@@ -80,7 +112,7 @@ void SavedController::refresh()
 
     for (int index = 0; index < portfolios.size(); ++index) {
         const Portfolio& portfolio = portfolios.at(index);
-        refreshed.append(portfolioSummaryToVariant(portfolio));
+        refreshed.append(portfolioSummaryToVariant(portfolio, assetsByTicker));
         if (!selectedId.isEmpty() && portfolio.id == selectedId) {
             selectedIndex = index;
         }
@@ -104,6 +136,7 @@ void SavedController::refresh()
 void SavedController::selectPortfolio(int index)
 {
     const QVector<Portfolio> portfolios = m_dataStore.loadPortfolios();
+    const QHash<QString, Asset> assetsByTicker = buildAssetLookup(m_dataStore.loadAssets());
     if (index < 0 || index >= portfolios.size()) {
         if (m_selectedIndex != -1 || !m_selectedPortfolio.isEmpty()) {
             m_selectedIndex = -1;
@@ -114,7 +147,7 @@ void SavedController::selectPortfolio(int index)
     }
 
     m_selectedIndex = index;
-    m_selectedPortfolio = portfolioDetailToVariant(portfolios.at(index));
+    m_selectedPortfolio = portfolioDetailToVariant(portfolios.at(index), assetsByTicker);
     emit selectedPortfolioChanged();
 }
 

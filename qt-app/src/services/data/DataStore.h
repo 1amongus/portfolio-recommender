@@ -51,6 +51,9 @@ public:
     virtual bool saveBlob(const QString& key, const QByteArray& blob) const;
 
     virtual QByteArray loadBlob(const QString& key) const;
+    virtual bool saveCachedResponse(const QString& key, const QByteArray& data, int ttlSeconds) const;
+    virtual QByteArray loadCachedResponse(const QString& key) const;
+    virtual bool isCacheValid(const QString& key) const;
 
 
 
@@ -71,5 +74,6 @@ private:
     QString sensitivityCurveFilePath() const;
 
     QString blobFilePath(const QString& key) const;
+    QString cacheMetadataFilePath(const QString& key) const;
 
 };

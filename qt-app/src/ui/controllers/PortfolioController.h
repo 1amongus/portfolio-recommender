@@ -27,6 +27,7 @@ public:
     QString errorMessage() const;
 
     Q_INVOKABLE void generate();
+    Q_INVOKABLE void loadPortfolio(const QVariantMap& portfolioData);
 
 signals:
     void targetYieldChanged();

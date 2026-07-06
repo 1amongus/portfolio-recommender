@@ -35,7 +35,7 @@ Page {
                     spacing: 12
 
                     Label {
-                        text: "API Key"
+                        text: "API Keys"
                         font.pixelSize: 18
                         font.bold: true
                     }
@@ -46,12 +46,36 @@ Page {
                     }
 
                     TextField {
-                        id: apiKeyField
+                        id: alphaKeyField
                         Layout.fillWidth: true
                         echoMode: TextInput.Password
                         placeholderText: "Alpha Vantage API Key"
-                        text: settingsController.apiKey
-                        onTextChanged: settingsController.apiKey = text
+                        text: settingsController.alphaVantageApiKey
+                        onTextChanged: settingsController.alphaVantageApiKey = text
+                    }
+
+                    TextField {
+                        Layout.fillWidth: true
+                        echoMode: TextInput.Password
+                        placeholderText: "Financial Modeling Prep API Key"
+                        text: settingsController.fmpApiKey
+                        onTextChanged: settingsController.fmpApiKey = text
+                    }
+
+                    TextField {
+                        Layout.fillWidth: true
+                        echoMode: TextInput.Password
+                        placeholderText: "Polygon API Key"
+                        text: settingsController.polygonApiKey
+                        onTextChanged: settingsController.polygonApiKey = text
+                    }
+
+                    TextField {
+                        Layout.fillWidth: true
+                        echoMode: TextInput.Password
+                        placeholderText: "FRED API Key"
+                        text: settingsController.fredApiKey
+                        onTextChanged: settingsController.fredApiKey = text
                     }
 
                     RowLayout {
@@ -69,7 +93,7 @@ Page {
 
                         Label {
                             Layout.fillWidth: true
-                            text: settingsController.hasApiKey ? "API key configured" : "No saved API key"
+                            text: settingsController.hasApiKey ? "At least one API key configured" : "No saved API keys"
                             color: settingsController.hasApiKey ? "#80cbc4" : "#ffcc80"
                         }
                     }
@@ -170,8 +194,8 @@ Page {
                         Label {
                             Layout.fillWidth: true
                             text: settingsController.hasApiKey
-                                  ? "Saved API key available for live refreshes."
-                                  : "Save an API key to enable live refreshes."
+                                  ? "Saved provider keys available for live refreshes."
+                                  : "Save at least one provider key to enable live refreshes."
                             color: settingsController.hasApiKey ? "#80cbc4" : "#ffcc80"
                             wrapMode: Text.Wrap
                         }

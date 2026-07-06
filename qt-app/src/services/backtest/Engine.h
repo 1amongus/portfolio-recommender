@@ -9,12 +9,22 @@
 
 class DataStore;
 
+enum class RebalanceFrequency {
+    Never = 0,
+    Monthly,
+    Quarterly,
+    Annually
+};
+
 class BacktestEngine
 {
 public:
     explicit BacktestEngine(DataStore* dataStore);
 
-    BacktestResult run(const QVector<Holding>& holdings, const QDate& startDate, const QDate& endDate) const;
+    BacktestResult run(const QVector<Holding>& holdings,
+                       const QDate& startDate,
+                       const QDate& endDate,
+                       RebalanceFrequency rebalance = RebalanceFrequency::Never) const;
 
 private:
     QVector<double> generateSyntheticPrices(double beta, double yield, int tradingDays) const;

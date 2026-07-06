@@ -101,6 +101,26 @@ Page {
                             }
                         }
                     }
+
+                    Button {
+                        text: "✨ Explain Recommendation"
+                        visible: portfolioController.portfolioResult.holdings !== undefined
+                        onClicked: explanationController.explainPortfolio(
+                            portfolioController.portfolioResult.holdings,
+                            portfolioController.targetYield,
+                            portfolioController.portfolioResult.achievedYield,
+                            portfolioController.portfolioResult.aggregateBeta
+                        )
+                    }
+
+                    ExplanationPanel {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 200
+                        title: "Portfolio Insight"
+                        text: explanationController.explanation
+                        generating: explanationController.isGenerating
+                        visible: explanationController.explanation.length > 0 || explanationController.isGenerating
+                    }
                 }
             }
         }

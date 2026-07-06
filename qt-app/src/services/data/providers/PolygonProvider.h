@@ -4,10 +4,10 @@
 #include "IMarketDataProvider.h"
 #include "ProviderBase.h"
 
-class AlphaVantageProvider : public IMarketDataProvider, protected ProviderBase
+class PolygonProvider : public IMarketDataProvider, protected ProviderBase
 {
 public:
-    AlphaVantageProvider();
+    PolygonProvider();
 
     QFuture<Asset> fetchAsset(const QString& ticker) override;
     QFuture<QVector<double>> fetchHistoricalPrices(const QString& ticker, const QDate& from, const QDate& to) override;
@@ -15,7 +15,8 @@ public:
 
 private:
     QString apiKey() const;
-    QUrl makeUrl(const QString& functionName, const QString& ticker) const;
+    QUrl makeAssetUrl(const QString& ticker) const;
+    QUrl makeHistoricalUrl(const QString& ticker, const QDate& from, const QDate& to) const;
     QString assetCacheKey(const QString& ticker) const;
     QString historicalCacheKey(const QString& ticker, const QDate& from, const QDate& to) const;
 

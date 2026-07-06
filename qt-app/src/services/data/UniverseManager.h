@@ -7,6 +7,8 @@
 #include "../../models/Asset.h"
 #include "DataStore.h"
 #include "providers/AlphaVantageProvider.h"
+#include "providers/FmpProvider.h"
+#include "providers/PolygonProvider.h"
 
 class UniverseManager : public QObject
 {
@@ -32,6 +34,9 @@ signals:
     void errorOccurred(const QString& message);
 
 private:
+    Asset fetchAssetFromProviders(const QString& ticker);
     DataStore* m_dataStore;
-    AlphaVantageProvider m_provider;
+    AlphaVantageProvider m_alphaVantageProvider;
+    FmpProvider m_fmpProvider;
+    PolygonProvider m_polygonProvider;
 };

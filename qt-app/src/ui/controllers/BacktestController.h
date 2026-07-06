@@ -16,6 +16,7 @@ class BacktestController : public QObject
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(QVariantMap result READ result NOTIFY resultChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
+    Q_PROPERTY(int rebalanceFrequency READ rebalanceFrequency WRITE setRebalanceFrequency NOTIFY rebalanceFrequencyChanged)
 
 public:
     explicit BacktestController(QObject* parent = nullptr);
@@ -23,14 +24,22 @@ public:
     bool isLoading() const;
     QVariantMap result() const;
     QString errorMessage() const;
+    bool hasLastResult() const;
+    BacktestResult lastResult() const;
+    int rebalanceFrequency() const;
+    void setRebalanceFrequency(int rebalanceFrequency);
 
     Q_INVOKABLE void runBacktest(double targetYield, int years);
     Q_INVOKABLE void backtestPortfolio(QVariantList holdings, int years);
+    Q_INVOKABLE QVariantList equityCurveData() const;
+    Q_INVOKABLE QVariantList drawdownCurveData() const;
+    Q_INVOKABLE QVariantList rollingYieldData() const;
 
 signals:
     void isLoadingChanged();
     void resultChanged();
     void errorMessageChanged();
+    void rebalanceFrequencyChanged();
     void backtestCompleted();
     void errorOccurred(const QString& message);
 
@@ -43,6 +52,9 @@ private:
     bool m_isLoading = false;
     QVariantMap m_result;
     QString m_errorMessage;
+    int m_rebalanceFrequency = static_cast<int>(RebalanceFrequency::Never);
+    BacktestResult m_lastResult;
+    bool m_hasLastResult = false;
     DataStore m_dataStore;
     Optimizer m_optimizer;
     BacktestEngine m_backtestEngine;

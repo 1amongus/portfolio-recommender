@@ -23,6 +23,11 @@ ApplicationWindow {
     Material.theme: Material.Dark
     Material.accent: Material.Teal
 
+    SetupWizard {
+        id: setupWizard
+        visible: settingsController.isFirstRun
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: 0
@@ -44,4 +49,6 @@ ApplicationWindow {
             initialItem: navigationBar.pageComponent(0)
         }
     }
+
+    Component.onCompleted: if (settingsController.isFirstRun) setupWizard.open()
 }

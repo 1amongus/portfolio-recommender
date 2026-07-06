@@ -121,6 +121,23 @@ Page {
                 }
 
                 RowLayout {
+                    visible: savedController.selectedPortfolio.id !== undefined
+                    spacing: 12
+
+                    Button {
+                        text: "Export CSV"
+                        enabled: portfolioList.currentIndex >= 0
+                        onClicked: exportController.exportPortfolioCsv(portfolioList.currentIndex)
+                    }
+
+                    Button {
+                        text: "Export PDF"
+                        enabled: portfolioList.currentIndex >= 0
+                        onClicked: exportController.exportPortfolioPdf(portfolioList.currentIndex)
+                    }
+                }
+
+                RowLayout {
                     visible: savedController.selectedPortfolio.name !== undefined
                     spacing: 24
 

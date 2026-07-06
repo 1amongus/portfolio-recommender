@@ -44,6 +44,10 @@ class SensitivityController : public QObject
 
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
+    Q_PROPERTY(double currentPortfolioYield READ currentPortfolioYield NOTIFY currentPortfolioChanged)
+
+    Q_PROPERTY(double currentPortfolioBeta READ currentPortfolioBeta NOTIFY currentPortfolioChanged)
+
 
 
 public:
@@ -80,11 +84,19 @@ public:
 
     QString errorMessage() const;
 
+    double currentPortfolioYield() const;
+
+    double currentPortfolioBeta() const;
+
 
 
     Q_INVOKABLE void generateCurve();
 
     Q_INVOKABLE QVariantMap pointDetails(int index) const;
+
+    Q_INVOKABLE void setCurrentPortfolio(QVariantList holdings);
+
+    Q_INVOKABLE QVariantMap getPortfolioAtPoint(int index) const;
 
 
 
@@ -103,6 +115,8 @@ signals:
     void curveDataChanged();
 
     void errorMessageChanged();
+
+    void currentPortfolioChanged();
 
 
 
@@ -134,6 +148,10 @@ private:
 
     QString m_errorMessage;
 
+    double m_currentPortfolioYield = 0.0;
+
+    double m_currentPortfolioBeta = 0.0;
+
     SensitivityCurve m_lastCurve;
 
     DataStore m_dataStore;
@@ -145,4 +163,3 @@ private:
     QFutureWatcher<SensitivityCurve> m_curveWatcher;
 
 };
-

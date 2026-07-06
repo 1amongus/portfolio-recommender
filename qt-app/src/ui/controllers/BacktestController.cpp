@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTime>
 #include <QtConcurrent>
 
 #include "../../models/Asset.h"
@@ -44,6 +45,20 @@ QVariantMap metricsToVariant(const BacktestMetrics& metrics)
     };
 }
 
+QVariantList curveToPointList(const QVector<QDate>& dates, const QVector<double>& values)
+{
+    QVariantList points;
+    const qsizetype count = qMin(dates.size(), values.size());
+    points.reserve(count);
+    for (qsizetype index = 0; index < count; ++index) {
+        points.append(QVariantMap{
+            {QStringLiteral("x"), QDateTime(dates[index], QTime(0, 0), Qt::UTC).toMSecsSinceEpoch()},
+            {QStringLiteral("y"), values[index]}
+        });
+    }
+    return points;
+}
+
 QVariantMap resultToVariant(const BacktestResult& result)
 {
     return {
@@ -55,7 +70,10 @@ QVariantMap resultToVariant(const BacktestResult& result)
         {QStringLiteral("equityCurve"), toVariantList(result.equityCurve)},
         {QStringLiteral("drawdownCurve"), toVariantList(result.drawdownCurve)},
         {QStringLiteral("rollingYield"), toVariantList(result.rollingYield)},
-        {QStringLiteral("dates"), toVariantList(result.dates)}
+        {QStringLiteral("dates"), toVariantList(result.dates)},
+        {QStringLiteral("equityCurveData"), curveToPointList(result.dates, result.equityCurve)},
+        {QStringLiteral("drawdownCurveData"), curveToPointList(result.dates, result.drawdownCurve)},
+        {QStringLiteral("rollingYieldData"), curveToPointList(result.dates, result.rollingYield)}
     };
 }
 
@@ -114,6 +132,8 @@ BacktestController::BacktestController(QObject* parent)
         setLoading(false);
 
         if (backtestResult.equityCurve.isEmpty()) {
+            m_lastResult = {};
+            m_hasLastResult = false;
             m_result.clear();
             emit resultChanged();
             setErrorMessage(QStringLiteral("Unable to generate a back-test for the selected inputs."));
@@ -121,6 +141,8 @@ BacktestController::BacktestController(QObject* parent)
             return;
         }
 
+        m_lastResult = backtestResult;
+        m_hasLastResult = true;
         m_result = resultToVariant(backtestResult);
         emit resultChanged();
 
@@ -148,6 +170,32 @@ QString BacktestController::errorMessage() const
     return m_errorMessage;
 }
 
+bool BacktestController::hasLastResult() const
+{
+    return m_hasLastResult;
+}
+
+BacktestResult BacktestController::lastResult() const
+{
+    return m_lastResult;
+}
+
+int BacktestController::rebalanceFrequency() const
+{
+    return m_rebalanceFrequency;
+}
+
+void BacktestController::setRebalanceFrequency(int rebalanceFrequency)
+{
+    const int clamped = qBound(0, rebalanceFrequency, 3);
+    if (m_rebalanceFrequency == clamped) {
+        return;
+    }
+
+    m_rebalanceFrequency = clamped;
+    emit rebalanceFrequencyChanged();
+}
+
 void BacktestController::runBacktest(double targetYield, int years)
 {
     if (m_isLoading) {
@@ -156,6 +204,8 @@ void BacktestController::runBacktest(double targetYield, int years)
 
     const QVector<Holding> holdings = m_optimizer.optimize(targetYield, 5);
     if (holdings.isEmpty()) {
+        m_lastResult = {};
+        m_hasLastResult = false;
         m_result.clear();
         emit resultChanged();
         setErrorMessage(QStringLiteral("No qualifying assets available for the requested yield."));
@@ -187,6 +237,8 @@ void BacktestController::backtestPortfolio(QVariantList holdings, int years)
     }
 
     if (parsedHoldings.isEmpty()) {
+        m_lastResult = {};
+        m_hasLastResult = false;
         m_result.clear();
         emit resultChanged();
         setErrorMessage(QStringLiteral("Please provide at least one holding to back-test."));
@@ -195,6 +247,21 @@ void BacktestController::backtestPortfolio(QVariantList holdings, int years)
     }
 
     startBacktest(parsedHoldings, years);
+}
+
+QVariantList BacktestController::equityCurveData() const
+{
+    return curveToPointList(m_lastResult.dates, m_lastResult.equityCurve);
+}
+
+QVariantList BacktestController::drawdownCurveData() const
+{
+    return curveToPointList(m_lastResult.dates, m_lastResult.drawdownCurve);
+}
+
+QVariantList BacktestController::rollingYieldData() const
+{
+    return curveToPointList(m_lastResult.dates, m_lastResult.rollingYield);
 }
 
 void BacktestController::ensureSeedData()
@@ -238,6 +305,8 @@ void BacktestController::setLoading(bool isLoading)
 void BacktestController::startBacktest(const QVector<Holding>& holdings, int years)
 {
     if (years <= 0) {
+        m_lastResult = {};
+        m_hasLastResult = false;
         m_result.clear();
         emit resultChanged();
         setErrorMessage(QStringLiteral("Please choose a valid back-test duration."));
@@ -251,8 +320,9 @@ void BacktestController::startBacktest(const QVector<Holding>& holdings, int yea
     const QVector<Holding> holdingsCopy = holdings;
     const QDate endDate = QDate::currentDate();
     const QDate startDate = endDate.addYears(-years);
+    const RebalanceFrequency rebalance = static_cast<RebalanceFrequency>(m_rebalanceFrequency);
 
-    m_backtestWatcher.setFuture(QtConcurrent::run([this, holdingsCopy, startDate, endDate]() {
-        return m_backtestEngine.run(holdingsCopy, startDate, endDate);
+    m_backtestWatcher.setFuture(QtConcurrent::run([this, holdingsCopy, startDate, endDate, rebalance]() {
+        return m_backtestEngine.run(holdingsCopy, startDate, endDate, rebalance);
     }));
 }

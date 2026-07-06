@@ -2,43 +2,65 @@
 
 #include <algorithm>
 
-#include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkReply>
-#include <QThread>
+#include <QJsonValue>
+#include <QSettings>
 #include <QUrlQuery>
 #include <QtConcurrent>
 
-AlphaVantageProvider::AlphaVantageProvider(QNetworkAccessManager* manager)
-    : m_networkAccessManager(manager != nullptr ? manager : new QNetworkAccessManager())
-    , m_ownsNetworkAccessManager(manager == nullptr)
-    , m_rateLimiter(5, 60000)
+#include "ResponseValidator.h"
+
+namespace {
+constexpr int kPriceCacheTtlSeconds = 86400;
+constexpr int kFundamentalCacheTtlSeconds = 604800;
+
+double valueToDouble(const QJsonValue& value)
 {
+    if (value.isDouble()) {
+        return value.toDouble();
+    }
+
+    return value.toString().toDouble();
+}
 }
 
-AlphaVantageProvider::~AlphaVantageProvider()
+AlphaVantageProvider::AlphaVantageProvider()
+    : ProviderBase(5, 60000)
 {
-    if (m_ownsNetworkAccessManager) {
-        delete m_networkAccessManager;
-    }
 }
 
 QFuture<Asset> AlphaVantageProvider::fetchAsset(const QString& ticker)
 {
     return QtConcurrent::run([this, ticker]() {
-        m_rateLimiter.acquire().waitForFinished();
-        const auto payload = performGet(makeUrl(QStringLiteral("OVERVIEW"), ticker));
-        const auto json = QJsonDocument::fromJson(payload).object();
-
         Asset asset;
-        asset.ticker = ticker.toUpper();
+        asset.ticker = ticker.trimmed().toUpper();
+
+        if (asset.ticker.isEmpty() || apiKey().trimmed().isEmpty()) {
+            return asset;
+        }
+
+        const QString cacheKey = assetCacheKey(asset.ticker);
+        QByteArray payload = m_dataStore.loadCachedResponse(cacheKey);
+        if (payload.isEmpty()) {
+            payload = performSecureGet(makeUrl(QStringLiteral("OVERVIEW"), asset.ticker));
+            if (!payload.isEmpty()) {
+                m_dataStore.saveCachedResponse(cacheKey, payload, kFundamentalCacheTtlSeconds);
+            }
+        }
+
+        const QJsonObject json = QJsonDocument::fromJson(payload).object();
+        const ValidationResult validation = ResponseValidator::validateAlphaVantageOverview(json);
+        if (!validation.valid) {
+            return asset;
+        }
+
         asset.name = json.value(QStringLiteral("Name")).toString();
         asset.sector = json.value(QStringLiteral("Sector")).toString();
-        asset.price = json.value(QStringLiteral("52WeekHigh")).toString().toDouble();
-        asset.dividendYield = json.value(QStringLiteral("DividendYield")).toString().toDouble();
-        asset.beta = json.value(QStringLiteral("Beta")).toString().toDouble();
-        asset.marketCap = json.value(QStringLiteral("MarketCapitalization")).toString().toDouble();
+        asset.price = valueToDouble(json.value(QStringLiteral("50DayMovingAverage")));
+        asset.dividendYield = valueToDouble(json.value(QStringLiteral("DividendYield")));
+        asset.beta = valueToDouble(json.value(QStringLiteral("Beta")));
+        asset.marketCap = valueToDouble(json.value(QStringLiteral("MarketCapitalization")));
         asset.isETF = json.value(QStringLiteral("AssetType")).toString().compare(QStringLiteral("ETF"), Qt::CaseInsensitive) == 0;
         asset.lastUpdated = QDateTime::currentDateTimeUtc();
         return asset;
@@ -48,21 +70,37 @@ QFuture<Asset> AlphaVantageProvider::fetchAsset(const QString& ticker)
 QFuture<QVector<double>> AlphaVantageProvider::fetchHistoricalPrices(const QString& ticker, const QDate& from, const QDate& to)
 {
     return QtConcurrent::run([this, ticker, from, to]() {
-        m_rateLimiter.acquire().waitForFinished();
-        const auto payload = performGet(makeUrl(QStringLiteral("TIME_SERIES_DAILY_ADJUSTED"), ticker));
-        const auto root = QJsonDocument::fromJson(payload).object();
-        const auto series = root.value(QStringLiteral("Time Series (Daily)")).toObject();
+        if (!from.isValid() || !to.isValid() || from > to || apiKey().trimmed().isEmpty()) {
+            return QVector<double>{};
+        }
+
+        const QString normalizedTicker = ticker.trimmed().toUpper();
+        const QString cacheKey = historicalCacheKey(normalizedTicker, from, to);
+        QByteArray payload = m_dataStore.loadCachedResponse(cacheKey);
+        if (payload.isEmpty()) {
+            payload = performSecureGet(makeUrl(QStringLiteral("TIME_SERIES_DAILY_ADJUSTED"), normalizedTicker));
+            if (!payload.isEmpty()) {
+                m_dataStore.saveCachedResponse(cacheKey, payload, kPriceCacheTtlSeconds);
+            }
+        }
+
+        const QJsonObject root = QJsonDocument::fromJson(payload).object();
+        const ValidationResult validation = ResponseValidator::validateAlphaVantageTimeSeries(root);
+        if (!validation.valid) {
+            return QVector<double>{};
+        }
+
+        const QJsonObject series = root.value(QStringLiteral("Time Series (Daily)")).toObject();
 
         QVector<QPair<QDate, double>> datedPrices;
-        const auto keys = series.keys();
-        for (const auto& key : keys) {
-            const auto date = QDate::fromString(key, Qt::ISODate);
+        for (auto it = series.constBegin(); it != series.constEnd(); ++it) {
+            const QDate date = QDate::fromString(it.key(), Qt::ISODate);
             if (!date.isValid() || date < from || date > to) {
                 continue;
             }
 
-            const auto point = series.value(key).toObject();
-            datedPrices.append({date, point.value(QStringLiteral("5. adjusted close")).toString().toDouble()});
+            const QJsonObject point = it.value().toObject();
+            datedPrices.append({date, valueToDouble(point.value(QStringLiteral("5. adjusted close")))});
         }
 
         std::sort(datedPrices.begin(), datedPrices.end(), [](const auto& left, const auto& right) {
@@ -102,20 +140,13 @@ QUrl AlphaVantageProvider::makeUrl(const QString& functionName, const QString& t
     return url;
 }
 
-QByteArray AlphaVantageProvider::performGet(const QUrl& url) const
+QString AlphaVantageProvider::assetCacheKey(const QString& ticker) const
 {
-    QNetworkRequest request(url);
-    QEventLoop loop;
-    QNetworkAccessManager localManager;
-    QNetworkAccessManager* manager = m_networkAccessManager;
-    if (manager == nullptr || manager->thread() != QThread::currentThread()) {
-        manager = &localManager;
-    }
+    return QStringLiteral("alphavantage_asset_%1").arg(ticker);
+}
 
-    QNetworkReply* reply = manager->get(request);
-    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    loop.exec();
-    const QByteArray payload = reply->readAll();
-    reply->deleteLater();
-    return payload;
+QString AlphaVantageProvider::historicalCacheKey(const QString& ticker, const QDate& from, const QDate& to) const
+{
+    return QStringLiteral("alphavantage_history_%1_%2_%3")
+        .arg(ticker, from.toString(Qt::ISODate), to.toString(Qt::ISODate));
 }

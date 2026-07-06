@@ -9,7 +9,9 @@
 #include "../services/data/DataStore.h"
 #include "../services/data/UniverseManager.h"
 #include "../ui/controllers/BacktestController.h"
+#include "../ui/controllers/ExportController.h"
 #include "../ui/controllers/ImportController.h"
+#include "../ui/controllers/ExplanationController.h"
 #include "../ui/controllers/PortfolioController.h"
 #include "../ui/controllers/SavedController.h"
 #include "../ui/controllers/SensitivityController.h"
@@ -36,14 +38,19 @@ int main(int argc, char *argv[])
     SettingsController settingsController(&universeManager, &settingsDataStore);
     BacktestController backtestController;
     ImportController importController;
+    ExplanationController explanationController;
     PortfolioController portfolioController;
     SavedController savedController;
     SensitivityController sensitivityController;
+    ExportController exportController;
     TrayManager trayManager;
+    exportController.setBacktestController(&backtestController);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("backtestController"), &backtestController);
+    engine.rootContext()->setContextProperty(QStringLiteral("exportController"), &exportController);
     engine.rootContext()->setContextProperty(QStringLiteral("importController"), &importController);
+    engine.rootContext()->setContextProperty(QStringLiteral("explanationController"), &explanationController);
     engine.rootContext()->setContextProperty(QStringLiteral("portfolioController"), &portfolioController);
     engine.rootContext()->setContextProperty(QStringLiteral("savedController"), &savedController);
     engine.rootContext()->setContextProperty(QStringLiteral("sensitivityController"), &sensitivityController);

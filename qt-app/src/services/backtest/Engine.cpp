@@ -83,6 +83,46 @@ QString portfolioIdentifier(const QVector<Holding>& holdings)
     }
     return parts.join(QStringLiteral("|"));
 }
+
+bool isQuarterStart(const QDate& date)
+{
+    return date.month() == 1 || date.month() == 4 || date.month() == 7 || date.month() == 10;
+}
+
+bool shouldRebalanceOnDate(const QDate& currentDate, const QDate& previousDate, RebalanceFrequency frequency)
+{
+    if (!currentDate.isValid() || !previousDate.isValid() || frequency == RebalanceFrequency::Never) {
+        return false;
+    }
+
+    switch (frequency) {
+    case RebalanceFrequency::Monthly:
+        return currentDate.month() != previousDate.month() || currentDate.year() != previousDate.year();
+    case RebalanceFrequency::Quarterly:
+        return currentDate.year() != previousDate.year()
+            || (currentDate.month() != previousDate.month() && isQuarterStart(currentDate));
+    case RebalanceFrequency::Annually:
+        return currentDate.year() != previousDate.year();
+    case RebalanceFrequency::Never:
+    default:
+        return false;
+    }
+}
+
+QString rebalanceFrequencyKey(RebalanceFrequency frequency)
+{
+    switch (frequency) {
+    case RebalanceFrequency::Monthly:
+        return QStringLiteral("monthly");
+    case RebalanceFrequency::Quarterly:
+        return QStringLiteral("quarterly");
+    case RebalanceFrequency::Annually:
+        return QStringLiteral("annually");
+    case RebalanceFrequency::Never:
+    default:
+        return QStringLiteral("never");
+    }
+}
 }
 
 BacktestEngine::BacktestEngine(DataStore* dataStore)
@@ -90,7 +130,10 @@ BacktestEngine::BacktestEngine(DataStore* dataStore)
 {
 }
 
-BacktestResult BacktestEngine::run(const QVector<Holding>& holdings, const QDate& startDate, const QDate& endDate) const
+BacktestResult BacktestEngine::run(const QVector<Holding>& holdings,
+                                   const QDate& startDate,
+                                   const QDate& endDate,
+                                   RebalanceFrequency rebalance) const
 {
     BacktestResult result;
     result.startDate = startDate;
@@ -126,6 +169,8 @@ BacktestResult BacktestEngine::run(const QVector<Holding>& holdings, const QDate
     priceSeries.reserve(holdings.size());
     QVector<double> basePrices;
     basePrices.reserve(holdings.size());
+    QVector<double> shares;
+    shares.reserve(holdings.size());
 
     for (const auto& originalHolding : holdings) {
         const Asset asset = assetByTicker.value(originalHolding.ticker.toUpper());
@@ -143,6 +188,7 @@ BacktestResult BacktestEngine::run(const QVector<Holding>& holdings, const QDate
         normalizedHoldings.append(holding);
         priceSeries.append(generateSyntheticPrices(holding.ticker, holding.beta, holding.yield, tradingDates.size()));
         basePrices.append(asset.price > 0.0 ? asset.price : 100.0);
+        shares.append(qFuzzyIsNull(priceSeries.last().value(0)) ? 0.0 : holding.weight / priceSeries.last().first());
     }
 
     QVector<double> marketCurve = generateSyntheticPrices(QStringLiteral("MARKET"), 1.0, 0.02, tradingDates.size());
@@ -152,20 +198,52 @@ BacktestResult BacktestEngine::run(const QVector<Holding>& holdings, const QDate
     double peak = 0.0;
     for (int day = 0; day < tradingDates.size(); ++day) {
         double portfolioValue = 0.0;
-        double effectiveYield = 0.0;
 
         for (int index = 0; index < normalizedHoldings.size(); ++index) {
-            const auto& holding = normalizedHoldings[index];
             const auto& prices = priceSeries[index];
-            if (prices.isEmpty() || qFuzzyIsNull(prices.first())) {
+            if (prices.isEmpty()) {
                 continue;
             }
 
-            portfolioValue += holding.weight * (prices[day] / prices.first());
+            portfolioValue += shares[index] * prices[day];
+        }
 
-            const double annualDividendPerUnit = basePrices[index] * holding.yield;
-            if (!qFuzzyIsNull(prices[day])) {
-                effectiveYield += holding.weight * (annualDividendPerUnit / prices[day]);
+        if (day > 0 && shouldRebalanceOnDate(tradingDates[day], tradingDates[day - 1], rebalance) && portfolioValue > 0.0) {
+            for (int index = 0; index < normalizedHoldings.size(); ++index) {
+                const auto& prices = priceSeries[index];
+                if (prices.isEmpty() || qFuzzyIsNull(prices[day])) {
+                    continue;
+                }
+
+                shares[index] = (portfolioValue * normalizedHoldings[index].weight) / prices[day];
+            }
+        }
+
+        portfolioValue = 0.0;
+        double effectiveYield = 0.0;
+        for (int index = 0; index < normalizedHoldings.size(); ++index) {
+            const auto& holding = normalizedHoldings[index];
+            const auto& prices = priceSeries[index];
+            if (prices.isEmpty() || qFuzzyIsNull(prices[day])) {
+                continue;
+            }
+
+            const double positionValue = shares[index] * prices[day];
+            portfolioValue += positionValue;
+        }
+
+        if (portfolioValue > 0.0) {
+            for (int index = 0; index < normalizedHoldings.size(); ++index) {
+                const auto& holding = normalizedHoldings[index];
+                const auto& prices = priceSeries[index];
+                if (prices.isEmpty() || qFuzzyIsNull(prices[day])) {
+                    continue;
+                }
+
+                const double positionValue = shares[index] * prices[day];
+                const double positionWeight = positionValue / portfolioValue;
+                const double annualDividendPerUnit = basePrices[index] * holding.yield;
+                effectiveYield += positionWeight * (annualDividendPerUnit / prices[day]);
             }
         }
 
@@ -184,7 +262,7 @@ BacktestResult BacktestEngine::run(const QVector<Holding>& holdings, const QDate
     }
 
     result.dates = tradingDates;
-    result.portfolioId = portfolioIdentifier(normalizedHoldings);
+    result.portfolioId = QStringLiteral("%1_%2").arg(portfolioIdentifier(normalizedHoldings), rebalanceFrequencyKey(rebalance));
 
     QVector<double> returns;
     returns.reserve(result.equityCurve.size() > 1 ? result.equityCurve.size() - 1 : 0);

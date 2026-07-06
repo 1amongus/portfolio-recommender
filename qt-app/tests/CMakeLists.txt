@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Test)
+find_package(Qt6 REQUIRED COMPONENTS Test Gui PrintSupport)
 
 qt_add_executable(OptimizerTests
     unit/tst_optimizer.cpp
@@ -61,3 +61,31 @@ target_include_directories(CsvParserTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
 
 target_link_libraries(CsvParserTests PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME CsvParserTests COMMAND CsvParserTests)
+
+qt_add_executable(ExportTests
+    unit/tst_export.cpp
+    ../src/services/export/CsvExporter.cpp
+    ../src/services/export/CsvExporter.h
+    ../src/services/export/PdfExporter.cpp
+    ../src/services/export/PdfExporter.h
+    ../src/models/BacktestResult.h
+    ../src/models/Portfolio.h
+)
+
+target_include_directories(ExportTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/.. ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+target_link_libraries(ExportTests PRIVATE Qt6::Core Qt6::Gui Qt6::PrintSupport Qt6::Test)
+add_test(NAME ExportTests COMMAND ExportTests)
+
+qt_add_executable(ExplanationTests
+    unit/tst_explanation.cpp
+    ../src/services/slm/ExplanationEngine.cpp
+    ../src/services/slm/ExplanationEngine.h
+    ../src/models/BacktestResult.h
+    ../src/models/Portfolio.h
+)
+
+target_include_directories(ExplanationTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/.. ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+target_link_libraries(ExplanationTests PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME ExplanationTests COMMAND ExplanationTests)

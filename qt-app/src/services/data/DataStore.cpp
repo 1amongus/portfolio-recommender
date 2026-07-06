@@ -6,6 +6,8 @@
 
 
 
+#include <QDateTime>
+
 #include <QDir>
 
 #include <QFile>
@@ -679,6 +681,70 @@ QByteArray DataStore::loadBlob(const QString& key) const
 
 }
 
+bool DataStore::saveCachedResponse(const QString& key, const QByteArray& data, int ttlSeconds) const
+
+{
+
+    if (key.isEmpty() || ttlSeconds <= 0 || !saveBlob(key, data)) {
+
+        return false;
+
+    }
+
+    const QJsonObject metadata{
+        {QStringLiteral("timestamp"), static_cast<qint64>(QDateTime::currentSecsSinceEpoch())},
+        {QStringLiteral("ttl"), ttlSeconds}
+    };
+
+    return atomicWriteJson(cacheMetadataFilePath(key), QJsonDocument(metadata));
+
+}
+
+QByteArray DataStore::loadCachedResponse(const QString& key) const
+
+{
+
+    if (!isCacheValid(key)) {
+        QFile::remove(blobFilePath(key));
+        QFile::remove(cacheMetadataFilePath(key));
+        return {};
+    }
+
+    return loadBlob(key);
+
+}
+
+bool DataStore::isCacheValid(const QString& key) const
+
+{
+
+    if (key.isEmpty()) {
+
+        return false;
+
+    }
+
+    QFile metadataFile(cacheMetadataFilePath(key));
+    if (!metadataFile.exists() || !metadataFile.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+
+    const QJsonObject metadata = QJsonDocument::fromJson(metadataFile.readAll()).object();
+    const qint64 timestamp = metadata.value(QStringLiteral("timestamp")).toVariant().toLongLong();
+    const int ttlSeconds = metadata.value(QStringLiteral("ttl")).toInt();
+    if (timestamp <= 0 || ttlSeconds <= 0) {
+        return false;
+    }
+
+    if (!QFile::exists(blobFilePath(key))) {
+        return false;
+    }
+
+    const qint64 expiresAt = timestamp + ttlSeconds;
+    return QDateTime::currentSecsSinceEpoch() <= expiresAt;
+
+}
+
 
 
 QString DataStore::dataDirectory() const
@@ -750,5 +816,13 @@ QString DataStore::blobFilePath(const QString& key) const
 {
 
     return dataDirectory() + QStringLiteral("/blobs/") + sanitizeBlobKey(key) + QStringLiteral(".json");
+
+}
+
+QString DataStore::cacheMetadataFilePath(const QString& key) const
+
+{
+
+    return dataDirectory() + QStringLiteral("/blobs/") + sanitizeBlobKey(key) + QStringLiteral(".meta.json");
 
 }

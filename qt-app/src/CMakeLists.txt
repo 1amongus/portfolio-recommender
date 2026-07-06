@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Concurrent Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Charts Concurrent Widgets PrintSupport)
 
 qt_add_executable(PortfolioRecommenderApp
     app/main.cpp
@@ -14,6 +14,12 @@ qt_add_executable(PortfolioRecommenderApp
     services/optimization/Optimizer.h
     services/import/CsvParser.cpp
     services/import/CsvParser.h
+    services/export/CsvExporter.cpp
+    services/export/CsvExporter.h
+    services/export/PdfExporter.cpp
+    services/export/PdfExporter.h
+    services/slm/ExplanationEngine.cpp
+    services/slm/ExplanationEngine.h
     services/sensitivity/CurveGenerator.cpp
     services/sensitivity/CurveGenerator.h
     services/data/DataStore.cpp
@@ -25,6 +31,16 @@ qt_add_executable(PortfolioRecommenderApp
     services/data/providers/IMarketDataProvider.h
     services/data/providers/AlphaVantageProvider.cpp
     services/data/providers/AlphaVantageProvider.h
+    services/data/providers/FmpProvider.cpp
+    services/data/providers/FmpProvider.h
+    services/data/providers/PolygonProvider.cpp
+    services/data/providers/PolygonProvider.h
+    services/data/providers/FredProvider.cpp
+    services/data/providers/FredProvider.h
+    services/data/providers/ProviderBase.cpp
+    services/data/providers/ProviderBase.h
+    services/data/providers/ResponseValidator.cpp
+    services/data/providers/ResponseValidator.h
     ui/controllers/PortfolioController.cpp
     ui/controllers/PortfolioController.h
     ui/controllers/SavedController.cpp
@@ -33,10 +49,14 @@ qt_add_executable(PortfolioRecommenderApp
     ui/controllers/ImportController.h
     ui/controllers/BacktestController.cpp
     ui/controllers/BacktestController.h
+    ui/controllers/ExplanationController.cpp
+    ui/controllers/ExplanationController.h
     ui/controllers/SensitivityController.cpp
     ui/controllers/SensitivityController.h
     ui/controllers/SettingsController.cpp
     ui/controllers/SettingsController.h
+    ui/controllers/ExportController.cpp
+    ui/controllers/ExportController.h
     utils/Math.cpp
     utils/Math.h
     utils/Logger.cpp
@@ -48,6 +68,7 @@ qt_add_qml_module(PortfolioRecommenderApp
     VERSION 1.0
     QML_FILES
         ui/qml/Main.qml
+        ui/qml/components/ExplanationPanel.qml
         ui/qml/components/NavigationBar.qml
         ui/qml/pages/GeneratePage.qml
         ui/qml/pages/SettingsPage.qml
@@ -55,6 +76,7 @@ qt_add_qml_module(PortfolioRecommenderApp
         ui/qml/pages/SensitivityPage.qml
         ui/qml/pages/ImportPage.qml
         ui/qml/pages/SavedPage.qml
+        ui/qml/pages/SetupWizard.qml
 )
 
 target_include_directories(PortfolioRecommenderApp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -68,6 +90,7 @@ target_link_libraries(PortfolioRecommenderApp
         Qt6::Charts
         Qt6::Concurrent
         Qt6::Widgets
+        Qt6::PrintSupport
 )
 
 set_target_properties(PortfolioRecommenderApp PROPERTIES

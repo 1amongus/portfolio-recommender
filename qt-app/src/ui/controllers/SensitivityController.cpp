@@ -9,6 +9,35 @@
 #include <QtMath>
 
 
+#include "../../utils/Math.h"
+
+namespace {
+QVariantList holdingsToVariantList(const QVector<Holding>& holdings)
+{
+    QVariantList holdingsList;
+    holdingsList.reserve(holdings.size());
+    for (const auto& holding : holdings) {
+        holdingsList.append(QVariantMap{
+            {QStringLiteral("ticker"), holding.ticker},
+            {QStringLiteral("weight"), holding.weight},
+            {QStringLiteral("yield"), holding.yield},
+            {QStringLiteral("beta"), holding.beta}
+        });
+    }
+    return holdingsList;
+}
+
+QVariantMap pointToVariantMap(const SensitivityPoint& point)
+{
+    return {
+        {QStringLiteral("yield"), point.yield},
+        {QStringLiteral("beta"), point.beta},
+        {QStringLiteral("achievedYield"), point.achievedYield},
+        {QStringLiteral("holdings"), holdingsToVariantList(point.holdings)}
+    };
+}
+}
+
 
 SensitivityController::SensitivityController(QObject* parent)
 
@@ -224,6 +253,26 @@ QString SensitivityController::errorMessage() const
 
 
 
+double SensitivityController::currentPortfolioYield() const
+
+{
+
+    return m_currentPortfolioYield;
+
+}
+
+
+
+double SensitivityController::currentPortfolioBeta() const
+
+{
+
+    return m_currentPortfolioBeta;
+
+}
+
+
+
 void SensitivityController::generateCurve()
 
 {
@@ -303,38 +352,92 @@ QVariantMap SensitivityController::pointDetails(int index) const
 
 
     const auto& point = m_lastCurve.points[index];
+    return pointToVariantMap(point);
 
-    QVariantList holdingsList;
+}
 
-    holdingsList.reserve(point.holdings.size());
 
-    for (const auto& holding : point.holdings) {
 
-        holdingsList.append(QVariantMap {
+void SensitivityController::setCurrentPortfolio(QVariantList holdings)
 
-            {QStringLiteral("ticker"), holding.ticker},
+{
 
-            {QStringLiteral("weight"), holding.weight},
+    QVector<Holding> parsedHoldings;
 
-            {QStringLiteral("yield"), holding.yield},
+    parsedHoldings.reserve(holdings.size());
 
-            {QStringLiteral("beta"), holding.beta}
+    for (const auto& entry : holdings) {
 
-        });
+        const QVariantMap map = entry.toMap();
+
+        Holding holding;
+
+        holding.ticker = map.value(QStringLiteral("ticker")).toString();
+
+        holding.weight = map.value(QStringLiteral("weight")).toDouble();
+
+        holding.yield = map.value(QStringLiteral("yield")).toDouble();
+
+        holding.beta = map.value(QStringLiteral("beta")).toDouble();
+
+        if (!holding.ticker.isEmpty()) {
+
+            parsedHoldings.append(holding);
+
+        }
 
     }
 
 
 
+    const double newYield = portfolioYield(parsedHoldings);
+
+    const double newBeta = portfolioBeta(parsedHoldings);
+
+    if (qFuzzyCompare(m_currentPortfolioYield + 1.0, newYield + 1.0)
+        && qFuzzyCompare(m_currentPortfolioBeta + 1.0, newBeta + 1.0)) {
+
+        return;
+
+    }
+
+
+
+    m_currentPortfolioYield = newYield;
+
+    m_currentPortfolioBeta = newBeta;
+
+    emit currentPortfolioChanged();
+
+}
+
+
+
+QVariantMap SensitivityController::getPortfolioAtPoint(int index) const
+
+{
+
+    if (index < 0 || index >= m_lastCurve.points.size()) {
+
+        return {};
+
+    }
+
+
+
+    const auto& point = m_lastCurve.points[index];
+
     return {
 
-        {QStringLiteral("yield"), point.yield},
+        {QStringLiteral("name"), QStringLiteral("Sensitivity Portfolio %1").arg(index + 1)},
 
-        {QStringLiteral("beta"), point.beta},
+        {QStringLiteral("targetYield"), point.yield},
 
         {QStringLiteral("achievedYield"), point.achievedYield},
 
-        {QStringLiteral("holdings"), holdingsList}
+        {QStringLiteral("aggregateBeta"), point.beta},
+
+        {QStringLiteral("holdings"), holdingsToVariantList(point.holdings)}
 
     };
 
@@ -471,4 +574,3 @@ void SensitivityController::updateCurveData(const SensitivityCurve& curve)
     emit curveDataChanged();
 
 }
-

@@ -5,6 +5,14 @@
 #include "../../services/data/DataStore.h"
 #include "../../services/data/UniverseManager.h"
 
+namespace {
+const QString kAlphaVantageApiKeySetting = QStringLiteral("marketData/alphaVantageApiKey");
+const QString kFmpApiKeySetting = QStringLiteral("marketData/fmpApiKey");
+const QString kPolygonApiKeySetting = QStringLiteral("marketData/polygonApiKey");
+const QString kFredApiKeySetting = QStringLiteral("marketData/fredApiKey");
+const QString kFirstRunSetting = QStringLiteral("app/firstRunComplete");
+}
+
 SettingsController::SettingsController(UniverseManager* universeManager, DataStore* dataStore, QObject* parent)
     : QObject(parent)
     , m_dataStore(dataStore != nullptr ? dataStore : new DataStore())
@@ -62,28 +70,85 @@ SettingsController::~SettingsController()
 
 QString SettingsController::apiKey() const
 {
-    return m_apiKey;
+    return m_alphaVantageApiKey;
+}
+
+QString SettingsController::alphaVantageApiKey() const
+{
+    return m_alphaVantageApiKey;
+}
+
+QString SettingsController::fmpApiKey() const
+{
+    return m_fmpApiKey;
+}
+
+QString SettingsController::polygonApiKey() const
+{
+    return m_polygonApiKey;
+}
+
+QString SettingsController::fredApiKey() const
+{
+    return m_fredApiKey;
 }
 
 bool SettingsController::hasApiKey() const
 {
-    QSettings settings;
-    return !settings.value(QStringLiteral("marketData/alphaVantageApiKey")).toString().trimmed().isEmpty();
+    return !m_alphaVantageApiKey.trimmed().isEmpty()
+        || !m_fmpApiKey.trimmed().isEmpty()
+        || !m_polygonApiKey.trimmed().isEmpty()
+        || !m_fredApiKey.trimmed().isEmpty();
 }
 
 void SettingsController::setApiKey(const QString& apiKey)
 {
-    if (m_apiKey == apiKey) {
+    setAlphaVantageApiKey(apiKey);
+}
+
+void SettingsController::setAlphaVantageApiKey(const QString& apiKey)
+{
+    if (m_alphaVantageApiKey == apiKey) {
         return;
     }
 
-    m_apiKey = apiKey;
-    emit apiKeyChanged();
+    m_alphaVantageApiKey = apiKey;
+    emit apiKeysChanged();
+}
+
+void SettingsController::setFmpApiKey(const QString& apiKey)
+{
+    if (m_fmpApiKey == apiKey) {
+        return;
+    }
+
+    m_fmpApiKey = apiKey;
+    emit apiKeysChanged();
+}
+
+void SettingsController::setPolygonApiKey(const QString& apiKey)
+{
+    if (m_polygonApiKey == apiKey) {
+        return;
+    }
+
+    m_polygonApiKey = apiKey;
+    emit apiKeysChanged();
+}
+
+void SettingsController::setFredApiKey(const QString& apiKey)
+{
+    if (m_fredApiKey == apiKey) {
+        return;
+    }
+
+    m_fredApiKey = apiKey;
+    emit apiKeysChanged();
 }
 
 QString SettingsController::providerName() const
 {
-    return QStringLiteral("Alpha Vantage");
+    return QStringLiteral("Alpha Vantage / FMP / Polygon / FRED");
 }
 
 QString SettingsController::statusMessage() const
@@ -134,19 +199,38 @@ QString SettingsController::dataDirectory() const
     return m_dataStore != nullptr ? m_dataStore->dataDirectory() : QString();
 }
 
+bool SettingsController::isFirstRun() const
+{
+    return m_isFirstRun;
+}
+
 void SettingsController::save()
 {
     QSettings settings;
-    settings.setValue(QStringLiteral("marketData/alphaVantageApiKey"), m_apiKey);
-    emit apiKeyChanged();
+    settings.setValue(kAlphaVantageApiKeySetting, m_alphaVantageApiKey);
+    settings.setValue(kFmpApiKeySetting, m_fmpApiKey);
+    settings.setValue(kPolygonApiKeySetting, m_polygonApiKey);
+    settings.setValue(kFredApiKeySetting, m_fredApiKey);
+    emit apiKeysChanged();
     setStatusMessage(QStringLiteral("Settings saved."));
 }
 
 void SettingsController::load()
 {
     QSettings settings;
-    setApiKey(settings.value(QStringLiteral("marketData/alphaVantageApiKey")).toString());
-    emit apiKeyChanged();
+    setAlphaVantageApiKey(settings.value(kAlphaVantageApiKeySetting).toString());
+    setFmpApiKey(settings.value(kFmpApiKeySetting).toString());
+    setPolygonApiKey(settings.value(kPolygonApiKeySetting).toString());
+    setFredApiKey(settings.value(kFredApiKeySetting).toString());
+
+    const bool firstRunComplete = settings.value(kFirstRunSetting, false).toBool();
+    const bool isFirstRun = !firstRunComplete && !hasApiKey();
+    if (m_isFirstRun != isFirstRun) {
+        m_isFirstRun = isFirstRun;
+        emit firstRunChanged();
+    }
+
+    emit apiKeysChanged();
     setStatusMessage(QStringLiteral("Settings loaded."));
 }
 
@@ -163,7 +247,7 @@ void SettingsController::refreshUniverse()
     }
 
     if (!hasApiKey()) {
-        setStatusMessage(QStringLiteral("Save an Alpha Vantage API key before refreshing the universe."));
+        setStatusMessage(QStringLiteral("Save at least one market data API key before refreshing the universe."));
         return;
     }
 
@@ -219,6 +303,18 @@ void SettingsController::removeTicker(const QString& ticker)
         notifyUniverseChanged();
         setStatusMessage(QStringLiteral("Removed %1 from the asset universe.").arg(normalized));
     }
+}
+
+void SettingsController::setFirstRunComplete()
+{
+    QSettings settings;
+    settings.setValue(kFirstRunSetting, true);
+    if (!m_isFirstRun) {
+        return;
+    }
+
+    m_isFirstRun = false;
+    emit firstRunChanged();
 }
 
 void SettingsController::notifyUniverseChanged()

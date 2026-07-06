@@ -3,10 +3,14 @@
 #include <algorithm>
 
 #include <QDateTime>
+#include <QHash>
 #include <QSettings>
 #include <QtConcurrent>
 
 namespace {
+const QString kAlphaVantageApiKeySetting = QStringLiteral("marketData/alphaVantageApiKey");
+const QString kFmpApiKeySetting = QStringLiteral("marketData/fmpApiKey");
+const QString kPolygonApiKeySetting = QStringLiteral("marketData/polygonApiKey");
 
 Asset makeAsset(const QString& ticker,
                 const QString& name,
@@ -85,6 +89,61 @@ bool isValidFetchedAsset(const Asset& asset)
     return !asset.ticker.trimmed().isEmpty() && !asset.name.trimmed().isEmpty();
 }
 
+bool hasConfiguredKey(const QString& key)
+{
+    QSettings settings;
+    return !settings.value(key).toString().trimmed().isEmpty();
+}
+
+bool isMeaningfulValue(double value)
+{
+    return !qFuzzyIsNull(value);
+}
+
+Asset mergeAssets(Asset primary, const Asset& fallback)
+{
+    if (!isValidFetchedAsset(primary)) {
+        return fallback;
+    }
+
+    if (primary.name.trimmed().isEmpty()) {
+        primary.name = fallback.name;
+    }
+    if (primary.sector.trimmed().isEmpty()) {
+        primary.sector = fallback.sector;
+    }
+    if (primary.price <= 0.0 && fallback.price > 0.0) {
+        primary.price = fallback.price;
+    }
+    if (!isMeaningfulValue(primary.dividendYield) && isMeaningfulValue(fallback.dividendYield)) {
+        primary.dividendYield = fallback.dividendYield;
+    }
+    if (!isMeaningfulValue(primary.beta) && isMeaningfulValue(fallback.beta)) {
+        primary.beta = fallback.beta;
+    }
+    if (primary.marketCap <= 0.0 && fallback.marketCap > 0.0) {
+        primary.marketCap = fallback.marketCap;
+    }
+    if (!primary.isETF && fallback.isETF) {
+        primary.isETF = true;
+    }
+    if (!primary.lastUpdated.isValid()) {
+        primary.lastUpdated = fallback.lastUpdated;
+    }
+
+    return primary;
+}
+
+bool needsFundamentalEnrichment(const Asset& asset)
+{
+    return asset.name.trimmed().isEmpty()
+        || asset.sector.trimmed().isEmpty()
+        || asset.price <= 0.0
+        || !isMeaningfulValue(asset.dividendYield)
+        || !isMeaningfulValue(asset.beta)
+        || asset.marketCap <= 0.0;
+}
+
 Asset fallbackAssetForTicker(const QString& ticker)
 {
     const QString normalized = normalizedTicker(ticker);
@@ -132,8 +191,9 @@ int UniverseManager::assetCount() const
 
 bool UniverseManager::hasApiKey() const
 {
-    QSettings settings;
-    return !settings.value(QStringLiteral("marketData/alphaVantageApiKey")).toString().trimmed().isEmpty();
+    return hasConfiguredKey(kAlphaVantageApiKeySetting)
+        || hasConfiguredKey(kFmpApiKeySetting)
+        || hasConfiguredKey(kPolygonApiKeySetting);
 }
 
 QFuture<bool> UniverseManager::refreshTicker(const QString& ticker)
@@ -145,7 +205,7 @@ QFuture<bool> UniverseManager::refreshTicker(const QString& ticker)
         }
 
         if (!hasApiKey()) {
-            emit errorOccurred(QStringLiteral("Configure and save an Alpha Vantage API key before refreshing assets."));
+            emit errorOccurred(QStringLiteral("Configure and save at least one market data API key before refreshing assets."));
             return false;
         }
 
@@ -155,9 +215,9 @@ QFuture<bool> UniverseManager::refreshTicker(const QString& ticker)
             return false;
         }
 
-        const Asset fetchedAsset = m_provider.fetchAsset(normalized).result();
+        const Asset fetchedAsset = fetchAssetFromProviders(normalized);
         if (!isValidFetchedAsset(fetchedAsset)) {
-            emit errorOccurred(QStringLiteral("Unable to refresh %1 from Alpha Vantage.").arg(normalized));
+            emit errorOccurred(QStringLiteral("Unable to refresh %1 from the configured providers.").arg(normalized));
             return false;
         }
 
@@ -188,7 +248,7 @@ QFuture<int> UniverseManager::refreshAll()
         }
 
         if (!hasApiKey()) {
-            emit errorOccurred(QStringLiteral("Configure and save an Alpha Vantage API key before refreshing assets."));
+            emit errorOccurred(QStringLiteral("Configure and save at least one market data API key before refreshing assets."));
             return 0;
         }
 
@@ -202,12 +262,12 @@ QFuture<int> UniverseManager::refreshAll()
         int updated = 0;
         for (int index = 0; index < total; ++index) {
             const QString ticker = currentAssets.at(index).ticker;
-            const Asset fetchedAsset = m_provider.fetchAsset(ticker).result();
+            const Asset fetchedAsset = fetchAssetFromProviders(ticker);
             if (isValidFetchedAsset(fetchedAsset)) {
                 currentAssets[index] = fetchedAsset;
                 ++updated;
             } else {
-                emit errorOccurred(QStringLiteral("Unable to refresh %1 from Alpha Vantage.").arg(ticker));
+                emit errorOccurred(QStringLiteral("Unable to refresh %1 from the configured providers.").arg(ticker));
             }
 
             emit refreshProgress(index + 1, total);
@@ -246,9 +306,9 @@ QFuture<bool> UniverseManager::addTicker(const QString& ticker)
             return false;
         }
 
-        Asset asset = hasApiKey() ? m_provider.fetchAsset(normalized).result() : fallbackAssetForTicker(normalized);
+        Asset asset = hasApiKey() ? fetchAssetFromProviders(normalized) : fallbackAssetForTicker(normalized);
         if (hasApiKey() && !isValidFetchedAsset(asset)) {
-            emit errorOccurred(QStringLiteral("Unable to add %1 from Alpha Vantage.").arg(normalized));
+            emit errorOccurred(QStringLiteral("Unable to add %1 from the configured providers.").arg(normalized));
             return false;
         }
 
@@ -289,6 +349,43 @@ bool UniverseManager::removeTicker(const QString& ticker)
     }
 
     return true;
+}
+
+Asset UniverseManager::fetchAssetFromProviders(const QString& ticker)
+{
+    const QString normalized = normalizedTicker(ticker);
+    Asset asset;
+
+    if (hasConfiguredKey(kAlphaVantageApiKeySetting)) {
+        asset = m_alphaVantageProvider.fetchAsset(normalized).result();
+        if (isValidFetchedAsset(asset) && !needsFundamentalEnrichment(asset)) {
+            return asset;
+        }
+    }
+
+    if (hasConfiguredKey(kFmpApiKeySetting)) {
+        const Asset fmpAsset = m_fmpProvider.fetchAsset(normalized).result();
+        if (!isValidFetchedAsset(asset)) {
+            asset = fmpAsset;
+        } else if (isValidFetchedAsset(fmpAsset)) {
+            asset = mergeAssets(asset, fmpAsset);
+        }
+
+        if (isValidFetchedAsset(asset) && !needsFundamentalEnrichment(asset)) {
+            return asset;
+        }
+    }
+
+    if (hasConfiguredKey(kPolygonApiKeySetting)) {
+        const Asset polygonAsset = m_polygonProvider.fetchAsset(normalized).result();
+        if (!isValidFetchedAsset(asset)) {
+            asset = polygonAsset;
+        } else if (isValidFetchedAsset(polygonAsset)) {
+            asset = mergeAssets(asset, polygonAsset);
+        }
+    }
+
+    return asset;
 }
 
 void UniverseManager::ensureExpandedSeedData()
