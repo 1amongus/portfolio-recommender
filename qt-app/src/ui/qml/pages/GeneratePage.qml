@@ -43,7 +43,10 @@ Page {
                 Button {
                     text: "Generate Portfolio"
                     onClicked: {
-                        portfolioController.targetYield = Number.fromLocaleString(Qt.locale(), targetYieldField.text) / 100.0
+                        var val = parseFloat(targetYieldField.text)
+                        if (!isNaN(val) && val > 0) {
+                            portfolioController.targetYield = val / 100.0
+                        }
                         portfolioController.generate()
                     }
                 }
@@ -61,7 +64,7 @@ Page {
 
             Frame {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
+                Layout.minimumHeight: 300
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -83,7 +86,7 @@ Page {
 
                     ListView {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        Layout.preferredHeight: Math.max(200, contentHeight)
                         clip: true
                         model: portfolioController.portfolioResult.holdings || []
                         delegate: Rectangle {
