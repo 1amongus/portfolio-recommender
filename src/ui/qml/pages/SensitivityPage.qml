@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
+import "../components"
+
 Page {
     ScrollView {
         anchors.fill: parent
@@ -50,39 +52,61 @@ Page {
                 Button {
                     text: "Compute Curve"
                     highlighted: true
-                    onClicked: sensitivityController.computeCurve(
-                        parseFloat(minYieldField.text) / 100.0,
-                        parseFloat(maxYieldField.text) / 100.0,
-                        parseFloat(stepField.text) / 100.0
-                    )
+                    onClicked: {
+                        if (sensitivityController)
+                            sensitivityController.computeCurve(
+                                parseFloat(minYieldField.text) / 100.0,
+                                parseFloat(maxYieldField.text) / 100.0,
+                                parseFloat(stepField.text) / 100.0
+                            )
+                    }
                 }
 
                 BusyIndicator {
-                    running: sensitivityController.isComputing
+                    running: sensitivityController ? sensitivityController.isComputing : false
                     visible: running
                     Layout.preferredWidth: 32
                     Layout.preferredHeight: 32
                 }
             }
 
-            // Results table
+            // Chart
             Frame {
                 Layout.fillWidth: true
                 Layout.leftMargin: 24
                 Layout.rightMargin: 24
-                Layout.minimumHeight: 300
-                visible: sensitivityController.curve.length > 0
+                visible: sensitivityController && sensitivityController.curve.length > 0
 
                 ColumnLayout {
                     anchors.fill: parent
                     spacing: 12
 
                     Label {
-                        text: "Yield vs Beta Trade-off (" + sensitivityController.curve.length + " points)"
+                        text: "Yield vs Beta Trade-off (" + (sensitivityController ? sensitivityController.curve.length : 0) + " points)"
                         font.pixelSize: 14
                         color: "#b0b0b0"
                     }
 
+                    LineChart {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 250
+                        title: "Portfolio Beta by Target Yield"
+                        yLabel: "Beta"
+                        lineColor: "#ffe66d"
+                        fillColor: "#3d3a1a"
+                        showZeroLine: false
+                        dataPoints: {
+                            if (!sensitivityController || !sensitivityController.curve) return []
+                            var pts = []
+                            var data = sensitivityController.curve
+                            for (var i = 0; i < data.length; i++) {
+                                pts.push({x: data[i].targetYield.toFixed(1), y: data[i].beta})
+                            }
+                            return pts
+                        }
+                    }
+
+                    // Table
                     Rectangle {
                         Layout.fillWidth: true
                         height: 32
@@ -101,23 +125,22 @@ Page {
                     ListView {
                         id: curveList
                         Layout.fillWidth: true
-                        Layout.preferredHeight: contentHeight
-                        Layout.maximumHeight: 400
+                        Layout.preferredHeight: Math.min(contentHeight, 250)
                         clip: true
                         interactive: true
-                        model: sensitivityController.curve || []
+                        model: sensitivityController ? (sensitivityController.curve || []) : []
                         delegate: Rectangle {
                             required property var modelData
                             required property int index
                             width: curveList.width
-                            height: 36
+                            height: 32
                             color: index % 2 === 0 ? "#22252d" : "#1e2128"
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.margins: 8
-                                Label { text: modelData.targetYield.toFixed(2); Layout.preferredWidth: 140; color: "#e0e0e0" }
-                                Label { text: modelData.achievedYield.toFixed(2); Layout.preferredWidth: 160; color: "#4ecdc4" }
-                                Label { text: modelData.beta.toFixed(4); Layout.preferredWidth: 120; color: "#ffe66d" }
+                                Label { text: modelData.targetYield.toFixed(2); Layout.preferredWidth: 140; color: "#e0e0e0"; font.pixelSize: 11 }
+                                Label { text: modelData.achievedYield.toFixed(2); Layout.preferredWidth: 160; color: "#4ecdc4"; font.pixelSize: 11 }
+                                Label { text: modelData.beta.toFixed(4); Layout.preferredWidth: 120; color: "#ffe66d"; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
                             }
                         }

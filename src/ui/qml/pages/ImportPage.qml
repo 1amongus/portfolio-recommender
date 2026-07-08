@@ -66,7 +66,7 @@ Page {
                     spacing: 12
 
                     Label {
-                        text: portfolioController.portfolioResult.holdings !== undefined
+                        text: portfolioController && portfolioController.portfolioResult.holdings !== undefined
                             ? "Current portfolio has " + portfolioController.portfolioResult.holdings.length + " holdings."
                             : "Generate a portfolio first to export."
                         color: "#808080"
@@ -74,7 +74,7 @@ Page {
 
                     Button {
                         text: "💾 Export to CSV"
-                        enabled: portfolioController.portfolioResult.holdings !== undefined
+                        enabled: portfolioController && portfolioController.portfolioResult.holdings !== undefined
                         onClicked: exportDialog.open()
                     }
 
@@ -110,7 +110,7 @@ Page {
     }
 
     Connections {
-        target: importExportController
+        target: importExportController || null
         function onImportCompleted(count) { importStatus.text = "✅ Imported " + count + " new assets" }
         function onExportCompleted(path) { exportStatus.text = "✅ Exported to " + path }
         function onErrorOccurred(msg) { importStatus.text = "❌ " + msg }

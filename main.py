@@ -15,6 +15,7 @@ from src.controllers.backtest_controller import BacktestController
 from src.controllers.sensitivity_controller import SensitivityController
 from src.controllers.saved_controller import SavedController
 from src.controllers.import_export_controller import ImportExportController
+from src.controllers.assistant_controller import AssistantController
 
 
 def main():
@@ -36,6 +37,7 @@ def main():
     sensitivity_controller = SensitivityController(data_store)
     saved_controller = SavedController(data_store)
     import_export_controller = ImportExportController(data_store)
+    assistant_controller = AssistantController()
 
     # Connect: auto-refresh saved list when a portfolio is generated
     portfolio_controller.portfolioReady.connect(saved_controller.refresh)
@@ -51,6 +53,7 @@ def main():
     ctx.setContextProperty("sensitivityController", sensitivity_controller)
     ctx.setContextProperty("savedController", saved_controller)
     ctx.setContextProperty("importExportController", import_export_controller)
+    ctx.setContextProperty("assistantController", assistant_controller)
 
     # Load main QML
     qml_dir = Path(__file__).parent / "src" / "ui" / "qml"

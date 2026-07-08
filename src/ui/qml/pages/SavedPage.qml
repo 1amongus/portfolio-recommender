@@ -31,12 +31,12 @@ Page {
             Label {
                 text: "No saved portfolios yet. Generate one first!"
                 color: "#808080"
-                visible: savedController.portfolios.length === 0
+                visible: !savedController || savedController.portfolios.length === 0
                 Layout.leftMargin: 24
             }
 
             Repeater {
-                model: savedController.portfolios || []
+                model: savedController ? (savedController.portfolios || []) : []
 
                 delegate: Frame {
                     required property var modelData

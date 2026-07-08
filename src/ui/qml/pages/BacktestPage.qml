@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
+import "../components"
+
 Page {
     ScrollView {
         anchors.fill: parent
@@ -37,12 +39,15 @@ Page {
                 Button {
                     text: "Run Backtest"
                     highlighted: true
-                    enabled: portfolioController.portfolioResult.holdings !== undefined
-                    onClicked: backtestController.runBacktest(portfolioController.portfolioResult.holdings, monthsInput.value)
+                    enabled: portfolioController && portfolioController.portfolioResult.holdings !== undefined
+                    onClicked: {
+                        if (backtestController && portfolioController)
+                            backtestController.runBacktest(portfolioController.portfolioResult.holdings, monthsInput.value)
+                    }
                 }
 
                 BusyIndicator {
-                    running: backtestController.isRunning
+                    running: backtestController ? backtestController.isRunning : false
                     visible: running
                     Layout.preferredWidth: 32
                     Layout.preferredHeight: 32
@@ -52,7 +57,7 @@ Page {
             Label {
                 text: "⚠️ Generate a portfolio first to run backtests."
                 color: "#ff9800"
-                visible: portfolioController.portfolioResult.holdings === undefined
+                visible: !portfolioController || portfolioController.portfolioResult.holdings === undefined
                 Layout.leftMargin: 24
             }
 
@@ -61,8 +66,7 @@ Page {
                 Layout.fillWidth: true
                 Layout.leftMargin: 24
                 Layout.rightMargin: 24
-                Layout.minimumHeight: 300
-                visible: backtestController.result.totalReturn !== undefined
+                visible: backtestController && backtestController.result.totalReturn !== undefined
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -71,23 +75,43 @@ Page {
                     RowLayout {
                         spacing: 24
                         Label {
-                            text: "📈 Total Return: " + (backtestController.result.totalReturn || 0).toFixed(2) + "%"
+                            property real totalRet: backtestController ? (backtestController.result.totalReturn || 0) : 0
+                            text: "📈 Total Return: " + totalRet.toFixed(2) + "%"
                             font.pixelSize: 16
-                            color: (backtestController.result.totalReturn || 0) >= 0 ? "#4ecdc4" : "#ff6b6b"
+                            color: totalRet >= 0 ? "#4ecdc4" : "#ff6b6b"
                         }
                         Label {
-                            text: "📊 Annualized: " + (backtestController.result.annualizedReturn || 0).toFixed(2) + "%"
+                            text: "📊 Annualized: " + (backtestController ? (backtestController.result.annualizedReturn || 0) : 0).toFixed(2) + "%"
                             font.pixelSize: 16
                             color: "#ffe66d"
                         }
                         Label {
-                            text: "📉 Max Drawdown: -" + (backtestController.result.maxDrawdown || 0).toFixed(2) + "%"
+                            text: "📉 Max Drawdown: -" + (backtestController ? (backtestController.result.maxDrawdown || 0) : 0).toFixed(2) + "%"
                             font.pixelSize: 16
                             color: "#ff6b6b"
                         }
                     }
 
-                    // Monthly returns table
+                    // Performance chart
+                    LineChart {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 250
+                        title: "Cumulative Return (%)"
+                        yLabel: "Return %"
+                        lineColor: "#4ecdc4"
+                        fillColor: "#1a4040"
+                        dataPoints: {
+                            if (!backtestController || !backtestController.result.monthlyData) return []
+                            var pts = []
+                            var data = backtestController.result.monthlyData
+                            for (var i = 0; i < data.length; i++) {
+                                pts.push({x: data[i].month.toString(), y: data[i].cumulative})
+                            }
+                            return pts
+                        }
+                    }
+
+                    // Monthly table (collapsed)
                     Rectangle {
                         Layout.fillWidth: true
                         height: 32
@@ -106,23 +130,22 @@ Page {
                     ListView {
                         id: backtestList
                         Layout.fillWidth: true
-                        Layout.preferredHeight: contentHeight
-                        Layout.maximumHeight: 300
+                        Layout.preferredHeight: Math.min(contentHeight, 200)
                         clip: true
                         interactive: true
-                        model: backtestController.result.monthlyData || []
+                        model: backtestController ? (backtestController.result.monthlyData || []) : []
                         delegate: Rectangle {
                             required property var modelData
                             required property int index
                             width: backtestList.width
-                            height: 36
+                            height: 32
                             color: index % 2 === 0 ? "#22252d" : "#1e2128"
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.margins: 8
-                                Label { text: modelData.month; Layout.preferredWidth: 80; color: "#e0e0e0" }
-                                Label { text: modelData["return"].toFixed(2); Layout.preferredWidth: 120; color: modelData["return"] >= 0 ? "#4ecdc4" : "#ff6b6b" }
-                                Label { text: modelData.cumulative.toFixed(2); Layout.preferredWidth: 140; color: modelData.cumulative >= 0 ? "#4ecdc4" : "#ff6b6b" }
+                                Label { text: modelData.month; Layout.preferredWidth: 80; color: "#e0e0e0"; font.pixelSize: 11 }
+                                Label { text: modelData["return"].toFixed(2); Layout.preferredWidth: 120; color: modelData["return"] >= 0 ? "#4ecdc4" : "#ff6b6b"; font.pixelSize: 11 }
+                                Label { text: modelData.cumulative.toFixed(2); Layout.preferredWidth: 140; color: modelData.cumulative >= 0 ? "#4ecdc4" : "#ff6b6b"; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
                             }
                         }
